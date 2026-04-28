@@ -2,30 +2,51 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <title>Tågtider från Köping</title>
+    <title>Tågtider: Köping & Arboga</title>
     <style>
+        /* Din originalstil */
         body { font-family: sans-serif; background: #121212; color: white; padding: 20px; }
         .train-row { border-bottom: 1px solid #333; padding: 10px 0; font-size: 2.2rem; }
         .canceled { color: #ff5555; font-weight: bold; }
         .delayed { color: #ffb86c; }
         .time { color: #50fa7b; font-weight: bold; }
+
+        /* Layout för att få dem bredvid varandra */
+        .flex-container {
+            display: flex;
+            gap: 50px; /* Mellanrum mellan listorna */
+            align-items: flex-start;
+        }
+        .column {
+            flex: 1; /* Gör att båda tar upp lika mycket plats */
+        }
+        h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
     </style>
 </head>
 <body>
 
-    <h1>Avgångar: Köping - Arboga</h1>
-    <div id="train-list">Laddar tider...</div>
+    <div class="flex-container">
+        <div class="column">
+            <h1>Köping - Arboga</h1>
+            <div id="list-kp">Laddar...</div>
+        </div>
+
+        <div class="column">
+            <h1>Arboga - Köping</h1>
+            <div id="list-arb">Laddar...</div>
+        </div>
+    </div>
 
     <script>
         async function fetchTrains() {
             const KEY = "d588dc3fb43244b7b8b4ac174a5ec693";
             const NOW = new Date().toISOString();
-            
-            // XML-frågan (samma som i ditt Bash-skript)
-            const xmlQuery = `
+
+            // Köping Query
+            const queryKp = `
             <REQUEST>
                 <LOGIN authenticationkey="${KEY}" />
-                <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation" limit="15">
+                <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation" limit="12">
                     <FILTER>
                         <AND>
                             <EQ name="LocationSignature" value="Kp" />
@@ -38,32 +59,53 @@
                             </OR>
                         </AND>
                     </FILTER>
-                    <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
-                    <INCLUDE>EstimatedTimeAtLocation</INCLUDE>
-                    <INCLUDE>TrackAtLocation</INCLUDE>
-                    <INCLUDE>AdvertisedTrainIdent</INCLUDE>
-                    <INCLUDE>Canceled</INCLUDE>
+                    <INCLUDE>AdvertisedTimeAtLocation,EstimatedTimeAtLocation,TrackAtLocation,AdvertisedTrainIdent,Canceled</INCLUDE>
                 </QUERY>
             </REQUEST>`;
 
+            // Arboga Query
+            const queryArb = `
+            <REQUEST>
+                <LOGIN authenticationkey="${KEY}" />
+                <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation" limit="12">
+                    <FILTER>
+                        <AND>
+                            <EQ name="LocationSignature" value="Arb" />
+                            <EQ name="ActivityType" value="Avgang" />
+                            <GT name="AdvertisedTimeAtLocation" value="${NOW}" />
+                            <OR>
+                                <EQ name="ViaToLocation.LocationName" value="Kp" />
+                                <EQ name="ToLocation.LocationName" value="Arb" />
+                                <EQ name="ViaToLocation.LocationName" value="Vå" />
+                            </OR>
+                        </AND>
+                    </FILTER>
+                    <INCLUDE>AdvertisedTimeAtLocation,EstimatedTimeAtLocation,TrackAtLocation,AdvertisedTrainIdent,Canceled</INCLUDE>
+                </QUERY>
+            </REQUEST>`;
+
+            updateSection(queryKp, "list-kp");
+            updateSection(queryArb, "list-arb");
+        }
+
+        async function updateSection(xmlQuery, elementId) {
             try {
                 const response = await fetch("https://api.trafikinfo.trafikverket.se/v2/data.json", {
                     method: "POST",
                     body: xmlQuery,
                     headers: { "Content-Type": "text/xml" }
                 });
-
                 const json = await response.json();
-                const trains = json.RESPONSE.RESULT[0].TrainAnnouncement;
-                displayTrains(trains);
+                const trains = json.RESPONSE.RESULT[0].TrainAnnouncement || [];
+                displayTrains(trains, elementId);
             } catch (error) {
-                document.getElementById('train-list').innerText = "Kunde inte hämta data.";
+                document.getElementById(elementId).innerText = "Kunde inte hämta data.";
             }
         }
 
-        function displayTrains(trains) {
-            const list = document.getElementById('train-list');
-            list.innerHTML = ""; // Rensa "Laddar..."
+        function displayTrains(trains, elementId) {
+            const list = document.getElementById(elementId);
+            list.innerHTML = ""; 
 
             trains.forEach(t => {
                 const advTime = t.AdvertisedTimeAtLocation.substring(11, 16);
@@ -79,15 +121,13 @@
 
                 list.innerHTML += `
                     <div class="train-row">
-                        <span class="time">[${advTime}]</span> 
+                        <span class="time">[${advTime}]</span>
                         Tåg ${t.AdvertisedTrainIdent} | ${info}
                     </div>`;
             });
         }
 
-        // Kör funktionen direkt
         fetchTrains();
-        // Uppdatera var 60:e sekund
         setInterval(fetchTrains, 60000);
     </script>
 </body>
